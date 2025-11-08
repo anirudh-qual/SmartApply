@@ -19,7 +19,7 @@
         }
 
         .container {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
             background: white;
             border-radius: 20px;
@@ -123,6 +123,14 @@
         .btn-secondary {
             background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
             margin-top: 10px;
+        }
+
+        .btn-record {
+            background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+        }
+
+        .btn-submit {
+            background: linear-gradient(135deg, #28a745 0%, #218838 100%);
         }
 
         .message {
@@ -275,6 +283,82 @@
             color: #667eea;
             font-weight: 600;
         }
+
+        /* Live Interview Styles */
+        .video-container {
+            position: relative;
+            width: 100%;
+            max-width: 640px;
+            margin: 0 auto 30px;
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+        }
+
+        video {
+            width: 100%;
+            display: block;
+            background: #000;
+        }
+
+        .interview-section {
+            margin-top: 30px;
+        }
+
+        .question-box {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            border-left: 5px solid #667eea;
+        }
+
+        .emotion-indicator {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 14px;
+            margin-right: 10px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            flex-wrap: wrap;
+        }
+
+        .controls button {
+            flex: 1;
+            min-width: 200px;
+        }
+
+        .progress {
+            text-align: center;
+            margin: 20px 0;
+            font-size: 18px;
+            color: #667eea;
+            font-weight: 600;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .evaluation-result {
+            background: #f8f9fa;
+            padding: 30px;
+            border-radius: 15px;
+            margin-top: 20px;
+        }
+
+        .score-display {
+            font-size: 72px;
+            font-weight: bold;
+            color: #667eea;
+            text-align: center;
+            margin: 30px 0;
+        }
     </style>
 </head>
 <body>
@@ -288,10 +372,9 @@
             <div class="tabs">
                 <div class="tab active" onclick="switchTab('application')">Application</div>
                 <div class="tab" onclick="switchTab('interview')">Interview</div>
-                <div class="tab" onclick="switchTab('tts')">Interview 2</div>
+                <div class="tab" onclick="switchTab('liveInterview')">Live Interview</div>
             </div>
 
-            <!-- Job Application Form -->
             <div id="application" class="tab-content active">
                 <form id="jobApplicationForm">
                     <div class="form-group">
@@ -341,9 +424,7 @@
                 <div class="message" id="message"></div>
             </div>
 
-            <!-- Interview Section -->
             <div id="interview" class="tab-content">
-                <!-- Step 1: Generate Questions -->
                 <div id="questionGeneratorSection">
                     <h2>Generate Interview Questions</h2>
                     <form id="questionGeneratorForm">
@@ -381,7 +462,6 @@
                     <div class="message" id="questionMessage"></div>
                 </div>
 
-                <!-- Step 2: Answer Questions -->
                 <div id="answerQuestionsSection" style="display: none;">
                     <div class="progress-indicator" id="progressIndicator"></div>
                     <form id="answerQuestionsForm">
@@ -394,7 +474,6 @@
                     <div class="message" id="answerMessage"></div>
                 </div>
 
-                <!-- Step 3: Evaluation Results -->
                 <div id="evaluationSection" style="display: none;">
                     <h2>📊 Interview Evaluation Results</h2>
                     <div id="evaluationResults"></div>
@@ -402,31 +481,46 @@
                 </div>
             </div>
 
-            <!-- Text-to-Speech Form -->
-            <div id="tts" class="tab-content">
-                <form id="ttsForm">
-                    <div class="form-group">
-                        <label for="ttsText">Text to Convert *</label>
-                        <textarea id="ttsText" name="text" required placeholder="Enter the text you want to convert to speech..."></textarea>
+            <div id="liveInterview" class="tab-content">
+                <div id="startSection">
+                    <h2>🎤 Start Your Live Interview</h2>
+                    <p style="margin-bottom: 20px; color: #666;">Resume-Based Interview with Real-Time Emotion Analysis</p>
+                    <div id="liveInterviewInfo" style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
+                        <p style="color: #666; margin-bottom: 10px;">Please submit your application first to start the live interview.</p>
+                        <p id="currentAppId" style="font-weight: bold; color: #667eea;"></p>
+                    </div>
+                    <button onclick="startLiveInterview()" id="startLiveBtn" disabled>Start Live Interview</button>
+                </div>
+
+                <div id="liveInterviewSection" class="hidden">
+                    <div class="progress" id="liveProgressText">Question 1 of 4</div>
+                    
+                    <div class="video-container">
+                        <video id="videoElement" autoplay muted></video>
                     </div>
 
-                    <div class="form-group">
-                        <label for="voiceId">Voice</label>
-                        <select id="voiceId" name="voice_id">
-                            <option value="pNInz6obpgDQGcFmaJgB">Adam</option>
-                            <option value="21m00Tcm4TlvDq8ikWAM">Rachel</option>
-                            <option value="AZnzlk1XvdvUeBnXmlld">Domi</option>
-                            <option value="EXAVITQu4vr4xnSDxMaL">Bella</option>
-                            <option value="ErXwobaYiN019PkySvjV">Antoni</option>
-                        </select>
+                    <div class="question-box">
+                        <div class="question-text" id="liveQuestionText">Loading...</div>
+                        <audio id="questionAudio" controls style="width: 100%; margin-top: 10px;"></audio>
                     </div>
 
-                    <button type="submit">Generate Speech</button>
-                </form>
+                    <div id="emotionFeedback" style="margin: 20px 0;"></div>
 
-                <div class="loader" id="ttsLoader"></div>
-                <div class="message" id="ttsMessage"></div>
-                <div class="audio-player" id="audioPlayer"></div>
+                    <textarea id="liveAnswerText" placeholder="Type your answer here..."></textarea>
+
+                    <div class="controls">
+                        <button class="btn-record" id="recordBtn" onclick="toggleRecording()">🎙️ Start Recording</button>
+                        <button class="btn-submit" onclick="submitLiveAnswer()" id="liveSubmitBtn" disabled>Submit Answer</button>
+                    </div>
+
+                    <div id="liveLoader" class="loader hidden"></div>
+                </div>
+
+                <div id="liveResultsSection" class="hidden">
+                    <h2>📊 Live Interview Results</h2>
+                    <div id="liveEvaluationDisplay"></div>
+                    <button type="button" class="btn-secondary" onclick="resetLiveInterview()">Take Another Interview</button>
+                </div>
             </div>
         </div>
     </div>
@@ -436,6 +530,15 @@
         let currentSessionId = null;
         let currentApplicationId = null;
         let currentQuestions = [];
+
+        // Live Interview Variables
+        let liveSessionId = null;
+        let videoStream = null;
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let isRecording = false;
+        let currentQuestionNumber = 1;
+        let totalQuestions = 4;
 
         // Tab switching
         function switchTab(tabName) {
@@ -482,9 +585,15 @@
                 if (response.ok) {
                     currentApplicationId = data.application_id;
                     message.className = 'message success';
-                    message.textContent = `✓ ${data.message}! Application ID: ${data.application_id}. You can now proceed to the Interview tab.`;
+                    message.textContent = `✓ ${data.message}! Application ID: ${data.application_id}. You can now proceed to the Interview tabs.`;
                     e.target.reset();
                     document.getElementById('fileInfo').textContent = '';
+                    
+                    // Enable live interview and show application ID
+                    document.getElementById('startLiveBtn').disabled = false;
+                    document.getElementById('currentAppId').textContent = `Your Application ID: ${data.application_id}`;
+                    document.getElementById('liveInterviewInfo').style.background = '#d4edda';
+                    document.getElementById('liveInterviewInfo').querySelector('p').textContent = 'Your application has been submitted successfully! You can now start the live interview.';
                 } else {
                     throw new Error(data.detail || 'Submission failed');
                 }
@@ -715,64 +824,268 @@
             document.getElementById('evaluationResults').innerHTML = '';
         }
 
-        // Text-to-Speech Form Submission
-        document.getElementById('ttsForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
+        // ==================== LIVE INTERVIEW FUNCTIONS ====================
+
+        // Start video
+        async function startVideo() {
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+                document.getElementById('videoElement').srcObject = videoStream;
+            } catch (error) {
+                alert('Please allow camera and microphone access');
+            }
+        }
+
+        // Capture video frame
+        function captureFrame() {
+            const video = document.getElementById('videoElement');
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            return canvas.toDataURL('image/jpeg').split(',')[1];
+        }
+
+        // Recording
+        function toggleRecording() {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        }
+
+        async function startRecording() {
+            audioChunks = [];
+            mediaRecorder = new MediaRecorder(videoStream);
             
-            const loader = document.getElementById('ttsLoader');
-            const message = document.getElementById('ttsMessage');
-            const audioPlayer = document.getElementById('audioPlayer');
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            
-            loader.style.display = 'block';
-            message.style.display = 'none';
-            audioPlayer.innerHTML = '';
-            submitBtn.disabled = true;
-            
-            const formData = {
-                text: document.getElementById('ttsText').value,
-                voice_id: document.getElementById('voiceId').value
+            mediaRecorder.ondataavailable = (event) => {
+                audioChunks.push(event.data);
             };
             
+            mediaRecorder.start();
+            isRecording = true;
+            document.getElementById('recordBtn').textContent = '⏹️ Stop Recording';
+            document.getElementById('liveSubmitBtn').disabled = false;
+        }
+
+        function stopRecording() {
+            return new Promise((resolve) => {
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        resolve(reader.result.split(',')[1]);
+                    };
+                    reader.readAsDataURL(audioBlob);
+                };
+                mediaRecorder.stop();
+                isRecording = false;
+                document.getElementById('recordBtn').textContent = '🎙️ Start Recording';
+            });
+        }
+
+        // Start live interview
+        async function startLiveInterview() {
+            if (!currentApplicationId) {
+                alert('Please submit your job application first!');
+                return;
+            }
+
+            const startButton = document.getElementById('startLiveBtn');
+            startButton.textContent = 'Starting your interview soon...';
+            startButton.disabled = true; // Disable to prevent double-clicks
+
             try {
-                const response = await fetch(`${API_BASE_URL}/api/text-to-speech`, {
+                await startVideo();
+                
+                const response = await fetch(`${API_BASE_URL}/api/interview/start`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(formData)
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ application_id: currentApplicationId })
                 });
+
+                const data = await response.json();
                 
                 if (response.ok) {
-                    const blob = await response.blob();
-                    const audioUrl = URL.createObjectURL(blob);
+                    liveSessionId = data.session_id;
+                    totalQuestions = data.total_questions;
                     
-                    audioPlayer.innerHTML = `
-                        <audio controls style="width: 100%;">
-                            <source src="${audioUrl}" type="audio/mpeg">
-                            Your browser does not support the audio element.
-                        </audio>
-                        <br><br>
-                        <a href="${audioUrl}" download="speech.mp3" style="color: #667eea; text-decoration: none;">
-                            ⬇ Download Audio
-                        </a>
-                    `;
+                    document.getElementById('startSection').classList.add('hidden');
+                    document.getElementById('liveInterviewSection').classList.remove('hidden');
                     
-                    message.className = 'message success';
-                    message.textContent = '✓ Audio generated successfully!';
+                    displayLiveQuestion(data);
+                    
+                    // No need to reset button text, section is hidden
                 } else {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || 'Generation failed');
+                    alert('Error: ' + data.detail);
+                    // Reset button on API error
+                    startButton.textContent = 'Start Live Interview';
+                    // Re-enable (only if it was enabled before, which it was)
+                    startButton.disabled = false; 
                 }
             } catch (error) {
-                message.className = 'message error';
-                message.textContent = `✗ Error: ${error.message}`;
-            } finally {
-                loader.style.display = 'none';
-                message.style.display = 'block';
-                submitBtn.disabled = false;
+                alert('Error starting interview: ' + error.message);
+                // Reset button on general error
+                startButton.textContent = 'Start Live Interview';
+                startButton.disabled = false;
             }
-        });
+        }
+
+        function displayLiveQuestion(data) {
+            document.getElementById('liveQuestionText').textContent = data.question;
+            document.getElementById('liveProgressText').textContent = 
+                `Question ${data.question_number} of ${totalQuestions}`;
+            
+            if (data.audio) {
+                const audio = document.getElementById('questionAudio');
+                audio.src = 'data:audio/mpeg;base64,' + data.audio;
+                audio.play();
+            }
+
+            let emotionHTML = '';
+            if (data.empathetic_feedback) {
+                emotionHTML += 
+                    `<div class="emotion-indicator" style="background: #d1ecf1; color: #0c5460;">
+                        💬 ${data.empathetic_feedback}
+                    </div>`;
+            }
+
+            if (data.emotion_detected) {
+                emotionHTML += 
+                    `<div class="emotion-indicator" style="background: #fff3cd; color: #856404;">
+                        😊 Emotion: ${data.emotion_detected}
+                    </div>`;
+            }
+
+            if (data.tone_detected) {
+                emotionHTML += 
+                    `<div class="emotion-indicator" style="background: #f8d7da; color: #721c24;">
+                        🎵 Tone: ${data.tone_detected}
+                    </div>`;
+            }
+
+            document.getElementById('emotionFeedback').innerHTML = emotionHTML;
+            document.getElementById('liveAnswerText').value = '';
+        }
+
+        // Submit answer
+        async function submitLiveAnswer() {
+            const answer = document.getElementById('liveAnswerText').value.trim();
+            
+            if (!answer) {
+                alert('Please provide an answer');
+                return;
+            }
+
+            document.getElementById('liveLoader').classList.remove('hidden');
+            document.getElementById('liveSubmitBtn').disabled = true;
+
+            try {
+                const videoFrame = captureFrame();
+                const audioData = isRecording ? await stopRecording() : null;
+
+                const response = await fetch(`${API_BASE_URL}/api/interview/continue`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: liveSessionId,
+                        answer: answer,
+                        video_frame: videoFrame,
+                        audio_data: audioData
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.is_final) {
+                    // Show results
+                    showLiveResults(data.evaluation);
+                } else {
+                    // Next question
+                    currentQuestionNumber++;
+                    displayLiveQuestion(data);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                document.getElementById('liveLoader').classList.add('hidden');
+                document.getElementById('liveSubmitBtn').disabled = false;
+            }
+        }
+
+        // Show results
+        function showLiveResults(evaluation) {
+            document.getElementById('liveInterviewSection').classList.add('hidden');
+            document.getElementById('liveResultsSection').classList.remove('hidden');
+
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+            }
+
+            const scoreClass = 
+                evaluation.overall_score >= 80 ? '#28a745' :
+                evaluation.overall_score >= 60 ? '#17a2b8' :
+                evaluation.overall_score >= 40 ? '#ffc107' : '#dc3545';
+
+            let html = `
+                <div class="score-display" style="color: ${scoreClass};">
+                    ${evaluation.overall_score}%
+                </div>
+
+                <div class="evaluation-result">
+                    <h3>Recommendation: <strong>${evaluation.recommendation.toUpperCase()}</strong></h3>
+                    <p style="font-size: 16px; margin: 20px 0;">${evaluation.summary}</p>
+
+                    <h4 style="color: #667eea; margin-top: 30px;">💪 Strengths</h4>
+                    <ul>
+                        ${evaluation.strengths.map(s => `<li>${s}</li>`).join('')}
+                    </ul>
+
+                    <h4 style="color: #667eea; margin-top: 20px;">📈 Areas for Improvement</h4>
+                    <ul>
+                        ${evaluation.areas_for_improvement.map(a => `<li>${a}</li>`).join('')}
+                    </ul>
+
+                    ${evaluation.emotion_analytics ? `
+                        <h4 style="color: #667eea; margin-top: 20px;">😊 Emotion Analysis</h4>
+                        <p>Dominant Emotion: <strong>${evaluation.emotion_analytics.dominant_emotion}</strong></p>
+                        <p>Average Confidence: <strong>${evaluation.emotion_analytics.avg_confidence.toFixed(1)}%</strong></p>
+                        <p>Emotional Stability: <strong>${evaluation.emotion_analytics.emotional_stability}</strong></p>
+                    ` : ''}
+                </div>
+            `;
+
+            document.getElementById('liveEvaluationDisplay').innerHTML = html;
+        }
+
+        function resetLiveInterview() {
+            liveSessionId = null;
+            currentQuestionNumber = 1;
+            
+            document.getElementById('startSection').classList.remove('hidden');
+            document.getElementById('liveInterviewSection').classList.add('hidden');
+            document.getElementById('liveResultsSection').classList.add('hidden');
+            
+            document.getElementById('liveAnswerText').value = '';
+            document.getElementById('emotionFeedback').innerHTML = '';
+            
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+
+            // Reset the button in startSection
+            const startButton = document.getElementById('startLiveBtn');
+            startButton.textContent = 'Start Live Interview';
+            // Only enable it if an application ID exists
+            if (currentApplicationId) {
+                startButton.disabled = false;
+            }
+        }
     </script>
 </body>
 </html>
