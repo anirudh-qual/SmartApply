@@ -10,6 +10,11 @@ from datetime import datetime
 import google.generativeai as genai
 import json
 from dotenv import load_dotenv
+import base64
+import librosa
+import numpy as np
+import tempfile
+import time
 load_dotenv()
 
 
@@ -290,7 +295,7 @@ async def generate_interview_questions(request: GenerateQuestionsRequest):
     Generate interview questions using Gemini API based on position and requirements
     """
     try:
-        model = genai.GenerativeModel("gemini-2.5-pro")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         
         # Build prompt for question generation
         categories_str = ", ".join(request.categories) if request.categories else "technical, behavioral, and situational"
@@ -359,7 +364,7 @@ async def evaluate_interview_answers(submission: InterviewSubmission):
     Returns detailed evaluation with scores and feedback
     """
     try:
-        model = genai.GenerativeModel('gemini-2.5-pro')
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Build evaluation prompt
         answers_text = "\n\n".join([
@@ -579,13 +584,28 @@ def analyze_audio_emotions(audio_base64: str) -> dict:
         # Decode base64
         audio_bytes = base64.b64decode(audio_base64)
         
-        # Save to temp file
-        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
-            temp_file.write(audio_bytes)
-            temp_path = temp_file.name
-        
-        # Load with librosa
-        y, sr = librosa.load(temp_path, sr=None)
+        # Save to temp file - use .webm extension for WebM audio, librosa will handle it
+        # If audio format detection fails, we'll try .wav as fallback
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.webm') as temp_file:
+                temp_file.write(audio_bytes)
+                temp_path = temp_file.name
+            
+            # Load with librosa (supports WebM if ffmpeg is available)
+            y, sr = librosa.load(temp_path, sr=None)
+        except Exception as e:
+            # If WebM fails, try saving as WAV and converting
+            print(f"WebM load failed, trying alternative: {e}")
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
+            
+            # Try with .wav extension (librosa might still work)
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_file:
+                temp_file.write(audio_bytes)
+                temp_path = temp_file.name
+            
+            y, sr = librosa.load(temp_path, sr=None)
         
         # Extract features
         rms = librosa.feature.rms(y=y)[0]
@@ -643,7 +663,7 @@ def generate_empathetic_response(audio_data: dict) -> str:
         tone = audio_data.get('tone', 'neutral')
         energy = audio_data.get('energy', 'medium')
         
-        model = genai.GenerativeModel("gemini-2.5-pro")
+        model = genai.GenerativeModel("gemini-2.5-flash")
         prompt = f"""Generate a brief (1 sentence) empathetic response for an interviewer based on:
 - Tone: {tone}
 - Energy: {energy}
@@ -704,6 +724,9 @@ def text_to_speech_bytes(text: str, audio_data: dict = None) -> str:
 
 # ==================== API ENDPOINTS ====================
 
+job_applications = []  # Example storage
+interview_sessions = {}  # Example session storage
+
 @app.get("/interview")
 async def root():
     return {
@@ -712,62 +735,52 @@ async def root():
             "Resume-based question generation",
             "Audio tone analysis",
             "Gemini AI evaluation",
-            "ElevenLabs TTS"
+            "ElevenLabs TTS with emotional voice"
         ]
     }
-
 
 @app.post("/api/interview/start")
 async def start_live_interview(request: StartInterviewRequest):
     """Start interview based on resume"""
     try:
-        print("Reached step 1")
-        # Get application
-        app = next(
-            (a for a in job_applications if a["application_id"] == request.application_id),
-            None
-        )
-        
-        if not app:
+        # Step 1: Fetch application
+        app_data = next((a for a in job_applications if a["application_id"] == request.application_id), None)
+        if not app_data:
             raise HTTPException(status_code=404, detail="Application not found")
-        print("Reached step 2")
-        # Extract resume text
-        resume_text = extract_resume_text(app['resume_path'])
-        
+
+        # Step 2: Extract resume text
+        resume_text = extract_resume_text(app_data['resume_path'])
         if not resume_text:
             raise HTTPException(status_code=400, detail="Could not extract resume text")
-        print("Reached step 3")
-        # Generate first question using Gemini
-        model = genai.GenerativeModel("gemini-2.5-pro")
+
+        # Step 3: Generate first question via Gemini
+        model = genai.GenerativeModel("gemini-2.5-flash")
         prompt = f"""Based on this resume, generate 1 specific interview question:
 
 Resume (excerpt):
 {resume_text[:2000]}
 
-Generate a question about their experience or skills.
 Return ONLY the question text."""
-        
         response = model.generate_content(prompt)
         question_text = response.text.strip()
-        print("Reached step 5")
-        # Convert to speech
-        audio_base64 = text_to_speech_bytes(question_text)
-        
-        # Create session
+
+        # Step 4: Convert question to emotional speech (default neutral for first question)
+        audio_base64 = text_to_speech_bytes(question_text) # emotion="neutral"
+
+        # Step 5: Create interview session
         session_id = f"LIVE-{len(interview_sessions) + 1:05d}"
         interview_sessions[session_id] = {
             "application_id": request.application_id,
-            "position": app['position'],
+            "position": app_data['position'],
             "resume_text": resume_text,
             "conversation": [
-                {"role": "interviewer", "question": question_text}
+                {"role": "interviewer", "question": question_text, "emotion": "neutral"}
             ],
             "question_count": 1,
             "max_questions": 4,
             "started_at": datetime.now().isoformat()
         }
-        print("Reached step 4")
-        
+
         return {
             "session_id": session_id,
             "question": question_text,
@@ -775,47 +788,46 @@ Return ONLY the question text."""
             "question_number": 1,
             "total_questions": 4
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 @app.post("/api/interview/continue")
 async def continue_live_interview(request: ContinueInterviewRequest):
-    """Continue interview - analyze audio tone"""
+    """Continue interview: analyze user audio, generate empathetic question, and return emotional TTS"""
     try:
         session = interview_sessions.get(request.session_id)
-        
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
-        
-        # Analyze audio tone
+
+        # Step 1: Analyze candidate audio
         audio_analysis = {}
         empathetic_feedback = ""
-        
         if request.audio_blob_base64:
             audio_analysis = analyze_audio_emotions(request.audio_blob_base64)
             empathetic_feedback = generate_empathetic_response(audio_analysis)
-        
-        # Store answer
+
+        # Step 2: Store candidate answer
         session['conversation'].append({
             "role": "candidate",
             "answer": request.answer_text,
             "audio_analysis": audio_analysis,
             "timestamp": datetime.now().isoformat()
         })
-        
-        # Check if done
+
+        # Step 3: Check if maximum questions reached
         if session['question_count'] >= session['max_questions']:
             return await evaluate_live_interview(request.session_id)
-        
-        # Generate next question using Gemini
+
+        # Step 4: Generate next question using Gemini, incorporating candidate emotion
         conversation_history = "\n".join([
-            f"Q: {item['question']}" if 'question' in item
-            else f"A: {item['answer']} [Tone: {item.get('audio_analysis', {}).get('tone', 'neutral')}]"
+            f"Q: {item['question']}" if 'question' in item else
+            f"A: {item['answer']} [Tone: {item.get('audio_analysis', {}).get('tone', 'neutral')}]"
             for item in session['conversation']
         ])
-        
-        model = genai.GenerativeModel("gemini-2.5-pro")
+        model = genai.GenerativeModel("gemini-2.5-flash")
+        print("Generating prompt through gemini start" )
         prompt = f"""You are an empathetic interviewer.
 
 Resume: {session['resume_text'][:1000]}
@@ -827,67 +839,66 @@ Candidate tone: {audio_analysis.get('tone', 'neutral')}
 
 Generate next question. Be encouraging if nervous, probe deeper if confident.
 Return ONLY the question."""
-        
         response = model.generate_content(prompt)
         question_text = response.text.strip()
-        
-        # Full response with empathy
+        print("Generating prompt through gemini end")
+
+        # Step 5: Combine empathetic feedback + question
         full_response = f"{empathetic_feedback} {question_text}" if empathetic_feedback else question_text
-        
-        # Convert to speech
-        audio_base64 = text_to_speech_bytes(full_response, audio_analysis)
-        
-        # Update session
+
+        # Step 6: Convert to emotional speech using ElevenLabs
+        detected_tone = audio_analysis.get('tone', 'neutral')
+        audio_base64 = text_to_speech_bytes(full_response, audio_data=audio_analysis)
+
+        # Step 7: Update session
         session['conversation'].append({
             "role": "interviewer",
             "question": question_text,
-            "empathetic_feedback": empathetic_feedback
+            "empathetic_feedback": empathetic_feedback,
+            "emotion": detected_tone
         })
         session['question_count'] += 1
-        
+
         return {
             "question": question_text,
             "empathetic_feedback": empathetic_feedback,
             "audio": audio_base64,
             "question_number": session['question_count'],
             "total_questions": session['max_questions'],
-            "tone_detected": audio_analysis.get('tone'),
+            "tone_detected": detected_tone,
             "is_final": False
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
 async def evaluate_live_interview(session_id: str):
-    """Evaluate complete interview using Gemini"""
+    """Evaluate completed interview using Gemini and aggregate audio analytics"""
     try:
         session = interview_sessions[session_id]
-        
-        # Calculate audio metrics
+
+        # Step 1: Aggregate tones and confidence
         all_tones = [
             item.get('audio_analysis', {}).get('tone', 'neutral')
-            for item in session['conversation']
-            if item.get('role') == 'candidate'
+            for item in session['conversation'] if item.get('role') == 'candidate'
         ]
-        
         confidence_scores = [
             item.get('audio_analysis', {}).get('confidence_score', 50)
-            for item in session['conversation']
-            if item.get('role') == 'candidate' and 'audio_analysis' in item
+            for item in session['conversation'] if item.get('role') == 'candidate'
         ]
-        
         avg_confidence = np.mean(confidence_scores) if confidence_scores else 50
-        
-        # Build conversation
+
+        # Step 2: Build conversation text for evaluation
         conversation_text = "\n\n".join([
             f"Q{i+1}: {session['conversation'][i*2].get('question', '')}\n"
             f"A: {session['conversation'][i*2+1].get('answer', '')}\n"
             f"[Tone: {session['conversation'][i*2+1].get('audio_analysis', {}).get('tone', 'N/A')}]"
             for i in range(len(all_tones))
         ])
-        
-        # Evaluate with Gemini
-        model = genai.GenerativeModel("gemini-2.5-pro")
+
+        # Step 3: Evaluate with Gemini
+        model = genai.GenerativeModel("gemini-2.5-flash")
         prompt = f"""Evaluate this interview:
 
 {conversation_text}
@@ -906,40 +917,42 @@ Return JSON only:
     "recommendation": "hire/maybe/reject",
     "summary": "brief assessment"
 }}"""
-        
         response = model.generate_content(prompt)
         response_text = response.text.strip()
-        
+
+        # Cleanup potential code blocks
         if response_text.startswith("```"):
             response_text = response_text.split("```")[1]
             if response_text.startswith("json"):
                 response_text = response_text[4:]
             response_text = response_text.strip()
-        
         evaluation = json.loads(response_text)
-        
-        # Add audio analytics
+
+        # Step 4: Add audio analytics
         evaluation['audio_analytics'] = {
             "tone_patterns": list(set(all_tones)),
             "dominant_tone": max(set(all_tones), key=all_tones.count) if all_tones else "neutral",
             "avg_confidence": float(avg_confidence)
         }
-        
+
+        # Step 5: Store evaluation
         session['evaluation'] = evaluation
         session['evaluated_at'] = datetime.now().isoformat()
-        
+
         return {
             "is_final": True,
             "session_id": session_id,
             "evaluation": evaluation
         }
-        
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/applications")
 async def get_applications():
     return {"total": len(job_applications), "applications": job_applications}
+
 
 @app.get("/api/interview/sessions")
 async def get_all_sessions():
