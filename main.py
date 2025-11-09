@@ -15,6 +15,7 @@ import librosa
 import numpy as np
 import tempfile
 import time
+from mcq import extract_skills_from_resume
 load_dotenv()
 
 
@@ -32,7 +33,7 @@ app.add_middleware(
 # API Configuration
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
+RESUME_CONTENT = "" # Global variable to hold resume content
 # Configure Gemini
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -126,6 +127,7 @@ async def submit_job_application(
         
         with open(resume_path, "wb") as f:
             f.write(resume_content)
+            RESUME_CONTENT = resume_content  
         
         application_data = {
             "application_id": application_id,
@@ -559,21 +561,8 @@ interview_sessions = {}
 def extract_resume_text(resume_path: str) -> str:
     """Extract text from resume file"""
     try:
-        file_ext = os.path.splitext(resume_path)[1].lower()
-        return "fjdlksjlasdfjklsdafjlkjdsfkljdsflkjlkdsf"
-        # if file_ext == '.pdf':
-        #     with open(resume_path, 'rb') as f:
-        #         reader = PyPDF2.PdfReader(f)
-        #         text = ""
-        #         for page in reader.pages:
-        #             text += page.extract_text()
-        #     return text
-        
-        # elif file_ext in ['.doc', '.docx']:
-        #     doc = Document(resume_path)
-        #     return "\n".join([para.text for para in doc.paragraphs])
-        
-        return ""
+        skills = extract_skills_from_resume(RESUME_CONTENT)
+        return ', '.join(skills)
     except Exception as e:
         print(f"Error extracting resume text: {e}")
         return ""
@@ -755,10 +744,10 @@ async def start_live_interview(request: StartInterviewRequest):
 
         # Step 3: Generate first question via Gemini
         model = genai.GenerativeModel("gemini-2.5-flash")
-        prompt = f"""Based on this resume, generate 1 specific interview question:
+        prompt = f"""Based on the skills provided, generate 1 specific interview question:
 
-Resume (excerpt):
-{resume_text[:2000]}
+Skills/Experience:
+{resume_text}
 
 Return ONLY the question text."""
         response = model.generate_content(prompt)

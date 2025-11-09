@@ -128,7 +128,7 @@
             <div class="tabs">
                 <div class="tab active" onclick="switchTab('application')">Application</div>
                 <div class="tab" onclick="switchTab('interview')">Interview</div>
-                <div class="tab" onclick="switchTab('liveInterview')">Live Interview</div>
+                <div class="tab" onclick="switchTab('liveInterview')">Pre Screen Interview</div>
             </div>
 
             <!-- =================== APPLICATION TAB =================== -->
@@ -178,31 +178,7 @@
             <div id="interview" class="tab-content">
                 <div id="questionGeneratorSection">
                     <h2>Generate Interview Questions</h2>
-                    <form id="questionGeneratorForm">
-                        <div class="form-group">
-                            <label for="interviewPosition">Position *</label>
-                            <select id="interviewPosition" required>
-                                <option value="">Select a position</option>
-                                <option value="Software Engineer">Software Engineer</option>
-                                <option value="Frontend Developer">Frontend Developer</option>
-                                <option value="Backend Developer">Backend Developer</option>
-                                <option value="Full Stack Developer">Full Stack Developer</option>
-                                <option value="Data Scientist">Data Scientist</option>
-                                <option value="Product Manager">Product Manager</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label for="numQuestions">Number of Questions *</label>
-                            <input type="number" id="numQuestions" min="1" max="10" value="5" required>
-                        </div>
-                        <div class="form-group">
-                            <label for="difficulty">Difficulty Level *</label>
-                            <select id="difficulty" required>
-                                <option value="easy">Easy</option>
-                                <option value="medium" selected>Medium</option>
-                                <option value="hard">Hard</option>
-                            </select>
-                        </div>
+                    <form id="questionGeneratorForm" onsubmit="event.preventDefault(); GenerateQuestions();">
                         <button type="submit">Generate Questions</button>
                     </form>
                     <div class="loader" id="questionLoader"></div>
@@ -213,8 +189,6 @@
                     <div class="progress-indicator" id="progressIndicator"></div>
                     <form id="answerQuestionsForm">
                         <div id="questionsContainer"></div>
-                        <button type="submit">Submit Interview Answers</button>
-                        <button type="button" class="btn-secondary" onclick="resetInterview()">Start Over</button>
                     </form>
                     <div class="loader" id="answerLoader"></div>
                     <div class="message" id="answerMessage"></div>
@@ -230,13 +204,12 @@
             <!-- =================== LIVE INTERVIEW TAB =================== -->
             <div id="liveInterview" class="tab-content">
                 <div id="startSection">
-                    <h2>🎤 Start Your Live Interview</h2>
+                    <h2>🎤 Start Your Pre-Screen Interview</h2>
                     <p style="margin-bottom: 20px; color: #666;">Resume-Based Interview with Real-Time Emotion Analysis</p>
                     <div id="liveInterviewInfo" style="background: #f8f9fa; padding: 20px; border-radius: 10px; margin: 20px 0;">
-                        <p style="color: #666; margin-bottom: 10px;">Please submit your application first to start the live interview.</p>
                         <p id="currentAppId" style="font-weight: bold; color: #667eea;"></p>
                     </div>
-                    <button onclick="startLiveInterview()" id="startLiveBtn" disabled>Start Live Interview</button>
+                    <button onclick="startLiveInterview()" id="startLiveBtn" disabled>Start Pre-Screen Interview</button>
                 </div>
 
                 <div id="liveInterviewSection" class="hidden">
@@ -270,7 +243,7 @@
                 </div>
 
                 <div id="liveResultsSection" class="hidden">
-                    <h2>📊 Live Interview Results</h2>
+                    <h2>📊 PRE-SCREEN Results</h2>
                     <div id="liveEvaluationDisplay"></div>
                     <button type="button" class="btn-secondary" onclick="resetLiveInterview()">Take Another Interview</button>
                 </div>
@@ -280,6 +253,7 @@
 
     <script>
         const API_BASE_URL = 'http://localhost:8000';
+        const MCQ_API_URL = 'http://localhost:8080';
         let currentSessionId = null;
         let currentApplicationId = null;
         let currentQuestions = [];
@@ -296,6 +270,14 @@
         let isProcessing = false;
         let currentTranscript = '';
         let finalTranscript = '';
+        let resumeFile = null;
+        let applicantName = '';
+        let applicantEmail = '';
+        let applicantPosition = '';
+        let currentQuestionIndex = 0;
+        let answers = [];
+        let timerInterval;
+        let cQ = null;
 
         function switchTab(tabName) {
             document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
@@ -306,6 +288,7 @@
 
         document.getElementById('resume').addEventListener('change', function(e) {
             const file = e.target.files[0];
+            resumeFile = file;
             const fileInfo = document.getElementById('fileInfo');
             if (file) fileInfo.textContent = `Selected: ${file.name} (${(file.size / (1024*1024)).toFixed(2)} MB)`;
         });
@@ -324,12 +307,27 @@
                 const data = await response.json();
                 if (response.ok) {
                     currentApplicationId = data.application_id;
+                    applicantName = formData.get('full_name');
+                    applicantEmail = formData.get('email');
+                    applicantPosition = formData.get('position');
+                    
+                    // Save application state to sessionStorage
+                    sessionStorage.setItem('applicationState', JSON.stringify({
+                        applicationId: data.application_id,
+                        name: applicantName,
+                        email: applicantEmail,
+                        position: applicantPosition
+                    }));
+                    
                     message.className = 'message success';
                     message.textContent = `✓ ${data.message}! Application ID: ${data.application_id}. You can now proceed to the Interview tabs.`;
                     e.target.reset(); document.getElementById('fileInfo').textContent = '';
                     document.getElementById('startLiveBtn').disabled = false;
                     document.getElementById('currentAppId').textContent = `Your Application ID: ${data.application_id}`;
                     document.getElementById('startLiveBtn').disabled = false;
+                    
+                    // Prefetch MCQ questions in the background
+                    GetQuestions();
                 } else {
                     message.className = 'message error';
                     message.textContent = data.error || 'Application submission failed.';
@@ -345,6 +343,113 @@
             document.getElementById('questionGeneratorSection').style.display = 'block';
             document.getElementById('questionsContainer').innerHTML = '';
             document.getElementById('progressIndicator').textContent = '';
+            currentQuestionIndex = 0;
+            answers = [];
+            clearInterval(timerInterval);
+        }
+
+        function showQuestion(index) {
+            const question = currentQuestions[index];
+            const progress = `Question ${index + 1} of ${currentQuestions.length}`;
+            document.getElementById('progressIndicator').textContent = progress;
+
+            const container = document.getElementById('questionsContainer');
+            container.innerHTML = `
+                <div class="question-card">
+                    <div class="question-number">${progress}</div>
+                    <div class="question-text">${question.question}</div>
+                    <div id="timer" style="font-size: 24px; color: red; text-align: center; margin: 10px 0;">10</div>
+                    <div class="options">
+                        ${question.options.map((option, i) => `
+                            <label style="display: block; margin: 5px 0;">
+                                <input type="radio" name="q${index}" value="${i}" onchange="selectAnswer(${index}, ${i})">
+                                ${option.option}
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+
+            startTimer();
+        }
+
+        function startTimer() {
+            let timeLeft = 10;
+            const timerEl = document.getElementById('timer');
+            timerEl.textContent = timeLeft;
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                timerEl.textContent = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    nextQuestion();
+                }
+            }, 1000);
+        }
+
+        function selectAnswer(questionIndex, optionIndex) {
+            answers[questionIndex] = optionIndex;
+            clearInterval(timerInterval);
+            setTimeout(() => nextQuestion(), 1000); // Wait 1s before next
+        }
+
+        function nextQuestion() {
+            clearInterval(timerInterval);
+            if (currentQuestionIndex < currentQuestions.length - 1) {
+                currentQuestionIndex++;
+                showQuestion(currentQuestionIndex);
+            } else {
+                submitQuiz();
+            }
+        }
+
+        async function submitQuiz() {
+            const results = currentQuestions.map((question, index) => ({
+                question_id: index + 1,
+                selected_option: answers[index] || 0,
+                is_correct: question.options[answers[index] || 0]?.is_correct || false,
+                time_taken_seconds: 10
+            }));
+
+            const submission = {
+                applicant_info: {
+                    name: applicantName,
+                    email: applicantEmail,
+                    position: applicantPosition,
+                    application_id: currentApplicationId
+                },
+                results: results
+            };
+
+            const loader = document.getElementById('answerLoader');
+            const message = document.getElementById('answerMessage');
+            loader.style.display = 'block';
+            message.style.display = 'none';
+
+            try {
+                const response = await fetch(`${MCQ_API_URL}/submit-quiz`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(submission)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Results stored in backend memory
+                    window.location.href = 'thank_you.html';
+                } else {
+                    message.className = 'message error';
+                    message.textContent = data.detail || 'Failed to submit quiz.';
+                    message.style.display = 'block';
+                }
+            } catch (error) {
+                message.className = 'message error';
+                message.textContent = 'Error submitting quiz.';
+                message.style.display = 'block';
+            } finally {
+                loader.style.display = 'none';
+            }
         }
 
         function resetLiveInterview() {
@@ -352,6 +457,89 @@
             document.getElementById('liveResultsSection').classList.add('hidden');
             document.getElementById('startSection').style.display = 'block';
             if (videoStream) videoStream.getTracks().forEach(track => track.stop());
+        }
+
+        async function GetQuestions() {
+            if (!resumeFile) {
+                console.log('No resume file available for question generation');
+                return;
+            }
+
+            console.log('GetQuestions called - prefetching MCQ questions');
+
+            const formData = new FormData();
+            formData.append('name', applicantName || 'Test Name');
+            formData.append('email', applicantEmail || 'test@example.com');
+            formData.append('position', applicantPosition || 'ML Engineer');
+            formData.append('resume', resumeFile);
+
+            console.log('FormData created, making request to:', `${MCQ_API_URL}/generate-quiz`);
+
+            try {
+                const response = await fetch(`${MCQ_API_URL}/generate-quiz`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                console.log('Response status:', response.status);
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (response.ok && data.questions) {
+                    cQ = data;
+                    console.log('Questions prefetched successfully:', data.questions.length, 'questions');
+                } else {
+                    console.error('Failed to prefetch questions:', data);
+                }
+            } catch (error) {
+                console.error('Error prefetching questions:', error);
+            }
+        }
+
+        async function GenerateQuestions() {
+            console.log('GenerateQuestions called');
+            console.log('resumeFile:', resumeFile);
+            console.log('applicantName:', applicantName);
+            console.log('applicantEmail:', applicantEmail);
+            console.log('applicantPosition:', applicantPosition);
+
+            if (!resumeFile) {
+                alert('Please upload a resume first in the Application tab!');
+                return;
+            }
+
+            const loader = document.getElementById('questionLoader');
+            const message = document.getElementById('questionMessage');
+            loader.style.display = 'block';
+            message.style.display = 'none';
+
+            // Check if questions were already prefetched
+            if (cQ != null && cQ.questions) {
+                currentQuestions = cQ.questions;
+                console.log('Using prefetched questions:', currentQuestions.length);
+                document.getElementById('questionGeneratorSection').style.display = 'none';
+                document.getElementById('answerQuestionsSection').style.display = 'block';
+                loader.style.display = 'none';
+                showQuestion(0);
+            } else {
+                // Questions weren't prefetched, fetch them now
+                console.log('Questions not prefetched, fetching now...');
+                await GetQuestions();
+                
+                if (cQ != null && cQ.questions) {
+                    currentQuestions = cQ.questions;
+                    console.log('Questions loaded:', currentQuestions.length);
+                    document.getElementById('questionGeneratorSection').style.display = 'none';
+                    document.getElementById('answerQuestionsSection').style.display = 'block';
+                    loader.style.display = 'none';
+                    showQuestion(0);
+                } else {
+                    message.className = 'message error';
+                    message.textContent = 'Failed to generate questions. Please try again.';
+                    message.style.display = 'block';
+                    loader.style.display = 'none';
+                }
+            }
         }
 
         async function startLiveInterview() {
@@ -814,6 +1002,47 @@
                 reader.readAsDataURL(blob);
             });
         }
+
+        // Check for hash on page load to switch to correct tab
+        window.addEventListener('load', function() {
+            // Restore application state from sessionStorage
+            const savedState = sessionStorage.getItem('applicationState');
+            if (savedState) {
+                try {
+                    const state = JSON.parse(savedState);
+                    currentApplicationId = state.applicationId;
+                    applicantName = state.name;
+                    applicantEmail = state.email;
+                    applicantPosition = state.position;
+                    
+                    // Update UI with restored state
+                    if (state.applicationId) {
+                        document.getElementById('currentAppId').textContent = `Your Application ID: ${state.applicationId}`;
+                        document.getElementById('startLiveBtn').disabled = false;
+                    }
+                    
+                    console.log('Restored application state:', state);
+                } catch (e) {
+                    console.error('Error restoring state:', e);
+                }
+            }
+            
+            const hash = window.location.hash.substring(1); // Remove the # symbol
+            if (hash && (hash === 'application' || hash === 'interview' || hash === 'liveInterview')) {
+                // Remove active class from all tabs and contents
+                document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+                
+                // Activate the correct tab
+                const tabs = document.querySelectorAll('.tab');
+                const tabNames = ['application', 'interview', 'liveInterview'];
+                const tabIndex = tabNames.indexOf(hash);
+                if (tabIndex !== -1) {
+                    tabs[tabIndex].classList.add('active');
+                    document.getElementById(hash).classList.add('active');
+                }
+            }
+        });
     </script>
 </body>
 </html>

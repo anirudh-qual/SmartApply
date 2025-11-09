@@ -295,7 +295,9 @@
 
     <script>
         const API_BASE_URL = 'http://localhost:8000';
+        const MCQ_BASE_URL = 'http://localhost:8080';
         let storageData = null;
+        let quizResults = null;
 
         // Load data on page load
         window.addEventListener('load', loadData);
@@ -304,6 +306,9 @@
             try {
                 const response = await fetch(`${API_BASE_URL}/api/admin/storage`);
                 storageData = await response.json();
+                
+                const quizResponse = await fetch(`${MCQ_BASE_URL}/admin/quiz-results`);
+                quizResults = await quizResponse.json();
                 
                 updateStats(storageData);
                 displayApplications(storageData.applications);
@@ -343,6 +348,7 @@
                             <th>Position</th>
                             <th>Resume</th>
                             <th>Submitted</th>
+                            <th>Quiz</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
@@ -351,6 +357,8 @@
 
             applications.data.forEach(app => {
                 const hasResume = app.resume_path !== undefined;
+                const quizResult = quizResults.quiz_results.find(q => q.application_id === app.application_id);
+                const quizScore = quizResult ? `${quizResult.quiz_score}%` : 'Not taken';
                 html += `
                     <tr>
                         <td><span class="badge badge-info">${app.application_id}</span></td>
@@ -359,6 +367,7 @@
                         <td>${app.position}</td>
                         <td>${app.resume_filename}</td>
                         <td>${new Date(app.submitted_at).toLocaleString()}</td>
+                        <td>${quizScore}</td>
                         <td>
                             <button onclick="viewApplicationDetails('${app.application_id}')" 
                                     style="padding: 5px 10px; margin: 2px;">
