@@ -16,6 +16,8 @@ import numpy as np
 import tempfile
 import time
 from mcq import extract_skills_from_resume
+import PyPDF2
+from docx import Document
 load_dotenv()
 
 
@@ -572,64 +574,66 @@ interview_sessions = {}
 
 # ==================== HELPER FUNCTIONS ====================
 
-def extract_resume_text(resume_content: str) -> str:
-    """Extract text from resume file"""
+def extract_resume_text(resume_path: str) -> str:
+    """Extract text from resume file (PDF, DOC, or DOCX)"""
     try:
-        return """"Georgia Institute of Technology Master of Science in Computer Science (GPA: 4.0/4.0) Atlanta, GA
-Aug ’25 – Dec ’26
-Specialization: Machine Learning
-• Relevant Coursework: Systems for Machine Learning, Machine Learning, Distributed Computing, Graduate OS(TA)
-National Institute of Technology Warangal Bachelor of Technology in Electronics and Communication Engineering (GPA: 8.65/10) • 2x Institute Merit Scholar | First Class with Distinction
-• Relevant Coursework: Data Structures and Algorithms, Object Oriented Programming, Web Development
-Warangal, India
-Aug ’18 – May ’22
-EXPERIENCE
-Oracle Bangalore, India
-Senior Member of Technical Staff (Software Engineer II) Jul ’22 – Aug ’25
-• Re-architected ExaDB-XS backend workflows to enable asynchronous and parallel execution across distributed
-clusters; improving scalability and debugging eﬀiciency by 60%
-• Designed a dynamic resource-optimization scheduler that leverages concurrent job prioritization to reduce idle
-compute time by 30% and increase cluster utilization.
-• Developed a log-analysis engine processing 1M+ log lines/minute to automate triage, decreasing mean time to
-resolution (MTTR) for critical incidents.
-• Promoted to SMTS within 22 months (top 1% of 600 hires) for ownership, innovation and consistent high-impact
-delivery.
-ServiceNow Hyderabad, India
-Software Development Engineer Intern May ’21 – Jul ’21
-• Designed and deployed a content-based NLP recommendation service for audit automation, reducing creation time by
-30% and validated via simulated A/B experiments.
-• Built time-series forecasting models (ARIMA) to predict database utilization, optimizing resource allocation in 70%
-of test cases.
-• Collaborated with the CloudML team to integrate model evaluation metrics and monitoring into production pipelines.
-Crosscope Remote (USA)
-Data Science Intern Oct ’20 – Feb ’21
-• Developed serverless AWS Lambda services for cancer prediction, processing 10K+ pathology slides weekly and
-scaling to petabyte-level datasets.
-• Built a real-time data ingestion pipeline with Apache Kafka and Flink to stream slide-level metadata and inference
-results.
-• Automated deployment and monitoring with AWS CodePipeline, reducing release latency by 70% and ensuring
-reliable production rollout.
-TECHNICAL SKILLS
-• Languages: Java, Python, C++, SQL, Go
-• Backend: Spring Boot, FastAPI, Flask, Node.js, REST APIs, Microservices
-• Data: MySQL, SQLite, MongoDB, DynamoDB, Redis, Elasticsearch
-• Cloud & DevOps: AWS (ECS, Lambda, Step Functions, CodePipeline), GCP, Docker, Kubernetes, Git
-• Other Tools: Linux, Bash, Triton, PyTorch, TensorFlow, CoPilot
-SELECTED PROJECTS
-Distributed Sharded KV Store with Multi-Group Transactions
-• Inspired by Google Spanner, built a linearizable, distributed, sharded key-value store with support for multi-key
-transactions, supporting 1000+ concurrent transactions with <10ms read/write latency.
-• Designed a ShardMaster for dynamic rebalancing of traﬀic via Join, Leave, Move, and Query operations
-• Implemented MultiPaxos consensus to guarantee consistency and linearizability across replica groups.
-• Integrated a two-phase commit protocol to support multi-key transactions spanning multiple shards.
-Flash Attention in Triton
-• Implemented optimized FlashAttention v2 kernels (causal & non-causal) in Triton, achieving 2 to 3x speedups over
-PyTorch baselines through register-level tiling and fused Online Softmax.
-• Leveraged auto-tuning for kernel parameter exploration, boosting performance by 20% over default configurations.
-PUBLICATIONS
-ECG-Based Biometric Authentication Using Deep Learning Methods — IEEE INCET ’22"""
+        if not resume_path or not os.path.exists(resume_path):
+            print(f"Resume file not found: {resume_path}")
+            return ""
+        
+        file_extension = os.path.splitext(resume_path)[1].lower()
+        text = ""
+        
+        if file_extension == '.pdf':
+            # Extract text from PDF
+            try:
+                with open(resume_path, 'rb') as f:
+                    pdf_reader = PyPDF2.PdfReader(f)
+                    for page in pdf_reader.pages:
+                        text += page.extract_text() + "\n"
+                print(f"Extracted {len(text)} characters from PDF")
+            except Exception as e:
+                print(f"Error extracting text from PDF: {e}")
+                return ""
+        
+        elif file_extension == '.docx':
+            # Extract text from DOCX
+            try:
+                doc = Document(resume_path)
+                text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+                print(f"Extracted {len(text)} characters from DOCX")
+            except Exception as e:
+                print(f"Error extracting text from DOCX: {e}")
+                return ""
+        
+        elif file_extension == '.doc':
+            # Note: python-docx only works with .docx files
+            # For .doc files, we would need additional libraries like textract or antiword
+            print("Warning: .doc files are not fully supported. Please use .docx or .pdf format.")
+            # Try to read as .docx anyway (won't work, but provides clearer error)
+            try:
+                doc = Document(resume_path)
+                text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+                print(f"Extracted {len(text)} characters from DOC")
+            except Exception as e:
+                print(f"Error: Cannot extract text from .doc file. Please convert to .docx or .pdf format. Error: {e}")
+                return ""
+        
+        else:
+            print(f"Unsupported file extension: {file_extension}")
+            return ""
+        
+        # Clean up the extracted text
+        text = text.strip()
+        if not text:
+            print("Warning: No text extracted from resume")
+        
+        return text
+        
     except Exception as e:
         print(f"Error extracting resume text: {e}")
+        import traceback
+        traceback.print_exc()
         return ""
 
 def analyze_audio_emotions(audio_base64: str) -> dict:
@@ -824,14 +828,14 @@ async def start_live_interview(request: StartInterviewRequest):
         if not app_data:
             raise HTTPException(status_code=404, detail="Application not found")
 
-        # Step 2: Extract resume text using the stored resume content
-        resume_content = app_data.get('resume_content')
-        if not resume_content:
-            raise HTTPException(status_code=400, detail="Resume content not found")
+        # Step 2: Extract resume text from the saved resume file
+        resume_path = app_data.get('resume_path')
+        if not resume_path or not os.path.exists(resume_path):
+            raise HTTPException(status_code=400, detail="Resume file not found")
             
-        resume_text = extract_resume_text(resume_content)
+        resume_text = extract_resume_text(resume_path)
         if not resume_text:
-            raise HTTPException(status_code=400, detail="Could not extract resume text")
+            raise HTTPException(status_code=400, detail="Could not extract resume text from file")
 
         # Step 3: Generate first question via Gemini
         model = genai.GenerativeModel("gemini-2.5-flash")
@@ -841,62 +845,12 @@ async def start_live_interview(request: StartInterviewRequest):
 Skills/Experience:
 {resume_text}
 
-Return ONLY the question text."""
-        #response = model.generate_content(prompt)
-        #question_text = response.text.strip()
-        questions = [
-    {
-        "id": 1,
-        "text": "Hi! It’s really nice meeting you. Could you tell me about your experience working on the Distributed Sharded KV Store project and how that experience prepared you for this role?",
-        "config": {
-            "stability": 0.45,
-            "similarity_boost": 0.8,
-            "style": 0.6,
-            "use_speaker_boost": True,
-            "speaking_rate": 1.05,
-            "emotion": "warm, friendly, curious"
-        }
-    },
-    {
-        "id": 2,
-        "text": "Hey, take a deep breath — grab a sip of water if it helps. No rush at all. Once you’re ready, could you walk me through that project again, maybe focusing on what specific challenges you faced?",
-        "config": {
-            "stability": 0.3,
-            "similarity_boost": 0.9,
-            "style": 0.75,
-            "use_speaker_boost": True,
-            "speaking_rate": 0.95,
-            "emotion": "empathetic, gentle, reassuring"
-        }
-    },
-    {
-        "id": 3,
-        "text": "Great, that makes sense. Could you now tell me more about your work at Oracle — what kind of systems you worked on and your key contributions there?",
-        "config": {
-            "stability": 0.6,
-            "similarity_boost": 0.7,
-            "style": 0.4,
-            "use_speaker_boost": True,
-            "speaking_rate": 1.0,
-            "emotion": "neutral, professional, engaged"
-        }
-    },
-    {
-        "id": 4,
-        "text": "That’s an impressive background, really. Given all this experience, what made you interested in applying to our company specifically?",
-        "config": {
-            "stability": 0.5,
-            "similarity_boost": 0.8,
-            "style": 0.65,
-            "use_speaker_boost": True,
-            "speaking_rate": 1.05,
-            "emotion": "impressed, warm admiration, upbeat"
-        }
-    },
-    {
-        "id": 5,
-        "text": "I appreciate that perspective. To wrap up — where do you see yourself heading in the next few years? What kind of problems or innovations do you want to work on?",
-        "config": {
+Return ONLY a SHORT one sentence question text."""
+        response = model.generate_content(prompt)
+        question_text = response.text.strip()
+        session_id = f"LIVE-{len(interview_sessions) + 1:05d}"
+        
+        config = {
             "stability": 0.35,
             "similarity_boost": 0.9,
             "style": 0.7,
@@ -904,13 +858,6 @@ Return ONLY the question text."""
             "speaking_rate": 0.98,
             "emotion": "reflective, thoughtful, hopeful"
         }
-    }
-]
-        session_id = f"LIVE-{len(interview_sessions) + 1:05d}"
-        question_index = 0  # First question
-        question_text = questions[question_index]['text']
-        config = questions[question_index]['config']
-        # Step 4: Convert question to emotional speech (default neutral for first question)
         audio_base64 = text_to_speech_bytes(question_text, config=config)
 
         # Step 5: Create interview session
@@ -984,62 +931,10 @@ Conversation:
 Candidate tone: {audio_analysis.get('tone', 'neutral')}
 
 Generate next question. Be encouraging if nervous, probe deeper if confident.
-Return ONLY the question."""
-        #response = model.generate_content(prompt)
-        #question_text = response.text.strip()
-        questions = [
-    {
-        "id": 1,
-        "text": "Hi! It's really nice meeting you. Could you tell me about your experience working on the Distributed Sharded KV Store project and how that experience prepared you for this role?",
-        "config": {
-            "stability": 0.45,
-            "similarity_boost": 0.8,
-            "style": 0.6,
-            "use_speaker_boost": True,
-            "speaking_rate": 1.05,
-            "emotion": "warm, friendly, curious"
-        }
-    },
-    {
-        "id": 2,
-        "text": "Hey, take a deep breath — grab a sip of water if it helps. No rush at all. Once you’re ready, could you walk me through that project again, maybe focusing on what specific challenges you faced?",
-        "config": {
-            "stability": 0.3,
-            "similarity_boost": 0.9,
-            "style": 0.75,
-            "use_speaker_boost": True,
-            "speaking_rate": 0.95,
-            "emotion": "empathetic, gentle, reassuring"
-        }
-    },
-    {
-        "id": 3,
-        "text": "Great, that makes sense. Could you now tell me more about your work at Oracle — what kind of systems you worked on and your key contributions there?",
-        "config": {
-            "stability": 0.6,
-            "similarity_boost": 0.7,
-            "style": 0.4,
-            "use_speaker_boost": True,
-            "speaking_rate": 1.0,
-            "emotion": "neutral, professional, engaged"
-        }
-    },
-    {
-        "id": 4,
-        "text": "That’s an impressive background, really. Given all this experience, what made you interested in applying to our company specifically?",
-        "config": {
-            "stability": 0.5,
-            "similarity_boost": 0.8,
-            "style": 0.65,
-            "use_speaker_boost": True,
-            "speaking_rate": 1.05,
-            "emotion": "impressed, warm admiration, upbeat"
-        }
-    },
-    {
-        "id": 5,
-        "text": "I appreciate that perspective. To wrap up — where do you see yourself heading in the next few years? What kind of problems or innovations do you want to work on?",
-        "config": {
+Return ONLY a SHORT one sentence question text."""
+        response = model.generate_content(prompt)
+        question_text = response.text.strip()
+        config = {
             "stability": 0.35,
             "similarity_boost": 0.9,
             "style": 0.7,
@@ -1047,12 +942,6 @@ Return ONLY the question."""
             "speaking_rate": 0.98,
             "emotion": "reflective, thoughtful, hopeful"
         }
-    }
-]
-        question_index = session['question_count']  # question_count is already 1, so this gets index 1 (second question)
-        question_text = questions[question_index]['text']
-        config = questions[question_index]['config']
-
         print("Generating prompt through gemini end")
 
         # Step 5: Combine empathetic feedback + question
