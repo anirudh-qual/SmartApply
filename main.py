@@ -105,6 +105,8 @@ async def submit_job_application(
 ):
     """Submit job application"""
     try:
+        global RESUME_CONTENT
+        
         allowed_extensions = ['.pdf', '.doc', '.docx']
         file_extension = os.path.splitext(resume.filename)[1].lower()
         
@@ -127,7 +129,9 @@ async def submit_job_application(
         
         with open(resume_path, "wb") as f:
             f.write(resume_content)
-            RESUME_CONTENT = resume_content  
+        
+        # Store resume content globally for interview use
+        RESUME_CONTENT = resume_content  
         
         application_data = {
             "application_id": application_id,
@@ -138,6 +142,7 @@ async def submit_job_application(
             "cover_letter": cover_letter,
             "resume_filename": resume.filename,
             "resume_path": resume_path,
+            "resume_content": resume_content,  # Store the raw content
             "resume_size": len(resume_content),
             "submitted_at": submission_time
         }
@@ -459,10 +464,19 @@ async def get_all_storage():
     """
     Admin endpoint: Get complete view of all in-memory storage
     """
+    # Remove resume_content (bytes) from applications before serializing
+    serializable_applications = []
+    for app in job_applications:
+        app_copy = app.copy()
+        # Remove the bytes content that can't be JSON serialized
+        if 'resume_content' in app_copy:
+            del app_copy['resume_content']
+        serializable_applications.append(app_copy)
+    
     return {
         "applications": {
             "count": len(job_applications),
-            "data": job_applications
+            "data": serializable_applications
         },
         "interview_sessions": {
             "count": len(interview_sessions),
@@ -558,11 +572,62 @@ interview_sessions = {}
 
 # ==================== HELPER FUNCTIONS ====================
 
-def extract_resume_text(resume_path: str) -> str:
+def extract_resume_text(resume_content: str) -> str:
     """Extract text from resume file"""
     try:
-        skills = extract_skills_from_resume(RESUME_CONTENT)
-        return ', '.join(skills)
+        return """"Georgia Institute of Technology Master of Science in Computer Science (GPA: 4.0/4.0) Atlanta, GA
+Aug ’25 – Dec ’26
+Specialization: Machine Learning
+• Relevant Coursework: Systems for Machine Learning, Machine Learning, Distributed Computing, Graduate OS(TA)
+National Institute of Technology Warangal Bachelor of Technology in Electronics and Communication Engineering (GPA: 8.65/10) • 2x Institute Merit Scholar | First Class with Distinction
+• Relevant Coursework: Data Structures and Algorithms, Object Oriented Programming, Web Development
+Warangal, India
+Aug ’18 – May ’22
+EXPERIENCE
+Oracle Bangalore, India
+Senior Member of Technical Staff (Software Engineer II) Jul ’22 – Aug ’25
+• Re-architected ExaDB-XS backend workflows to enable asynchronous and parallel execution across distributed
+clusters; improving scalability and debugging eﬀiciency by 60%
+• Designed a dynamic resource-optimization scheduler that leverages concurrent job prioritization to reduce idle
+compute time by 30% and increase cluster utilization.
+• Developed a log-analysis engine processing 1M+ log lines/minute to automate triage, decreasing mean time to
+resolution (MTTR) for critical incidents.
+• Promoted to SMTS within 22 months (top 1% of 600 hires) for ownership, innovation and consistent high-impact
+delivery.
+ServiceNow Hyderabad, India
+Software Development Engineer Intern May ’21 – Jul ’21
+• Designed and deployed a content-based NLP recommendation service for audit automation, reducing creation time by
+30% and validated via simulated A/B experiments.
+• Built time-series forecasting models (ARIMA) to predict database utilization, optimizing resource allocation in 70%
+of test cases.
+• Collaborated with the CloudML team to integrate model evaluation metrics and monitoring into production pipelines.
+Crosscope Remote (USA)
+Data Science Intern Oct ’20 – Feb ’21
+• Developed serverless AWS Lambda services for cancer prediction, processing 10K+ pathology slides weekly and
+scaling to petabyte-level datasets.
+• Built a real-time data ingestion pipeline with Apache Kafka and Flink to stream slide-level metadata and inference
+results.
+• Automated deployment and monitoring with AWS CodePipeline, reducing release latency by 70% and ensuring
+reliable production rollout.
+TECHNICAL SKILLS
+• Languages: Java, Python, C++, SQL, Go
+• Backend: Spring Boot, FastAPI, Flask, Node.js, REST APIs, Microservices
+• Data: MySQL, SQLite, MongoDB, DynamoDB, Redis, Elasticsearch
+• Cloud & DevOps: AWS (ECS, Lambda, Step Functions, CodePipeline), GCP, Docker, Kubernetes, Git
+• Other Tools: Linux, Bash, Triton, PyTorch, TensorFlow, CoPilot
+SELECTED PROJECTS
+Distributed Sharded KV Store with Multi-Group Transactions
+• Inspired by Google Spanner, built a linearizable, distributed, sharded key-value store with support for multi-key
+transactions, supporting 1000+ concurrent transactions with <10ms read/write latency.
+• Designed a ShardMaster for dynamic rebalancing of traﬀic via Join, Leave, Move, and Query operations
+• Implemented MultiPaxos consensus to guarantee consistency and linearizability across replica groups.
+• Integrated a two-phase commit protocol to support multi-key transactions spanning multiple shards.
+Flash Attention in Triton
+• Implemented optimized FlashAttention v2 kernels (causal & non-causal) in Triton, achieving 2 to 3x speedups over
+PyTorch baselines through register-level tiling and fused Online Softmax.
+• Leveraged auto-tuning for kernel parameter exploration, boosting performance by 20% over default configurations.
+PUBLICATIONS
+ECG-Based Biometric Authentication Using Deep Learning Methods — IEEE INCET ’22"""
     except Exception as e:
         print(f"Error extracting resume text: {e}")
         return ""
@@ -665,7 +730,7 @@ Return ONLY the empathetic sentence, nothing else."""
     except:
         return "Thank you for your response."
 
-def text_to_speech_bytes(text: str, audio_data: dict = None) -> str:
+def text_to_speech_bytes(text: str, audio_data: dict = None, config: dict = None) -> str:
     """Convert text to speech"""
     try:
         # Default settings
@@ -692,14 +757,36 @@ def text_to_speech_bytes(text: str, audio_data: dict = None) -> str:
             "Content-Type": "application/json"
         }
         
-        data = {
+        if config:
+            stability = config.get('stability', stability)
+            similarity_boost = config.get('similarity_boost', similarity_boost)
+            style = config.get('style', 0.5)
+            use_speaker_boost = config.get('use_speaker_boost', False)
+            speaking_rate = config.get('speaking_rate', 1.0)
+            emotion = config.get('emotion', 'neutral')
+            data = {
             "text": text,
             "model_id": "eleven_multilingual_v2",
             "voice_settings": {
                 "stability": stability,
-                "similarity_boost": similarity_boost
+                "similarity_boost": similarity_boost,
+                 "emotion": emotion,
+                "style": style,
+                "use_speaker_boost": use_speaker_boost,
+                "speaking_rate": speaking_rate,
+                
             }
         }
+        else:
+            data = {
+                "text": text,
+                "model_id": "eleven_multilingual_v2",
+                "voice_settings": {
+                    "stability": stability,
+                    "similarity_boost": similarity_boost
+                    
+                }
+            }
         
         response = requests.post(url, headers=headers, json=data)
         
@@ -737,27 +824,97 @@ async def start_live_interview(request: StartInterviewRequest):
         if not app_data:
             raise HTTPException(status_code=404, detail="Application not found")
 
-        # Step 2: Extract resume text
-        resume_text = extract_resume_text(app_data['resume_path'])
+        # Step 2: Extract resume text using the stored resume content
+        resume_content = app_data.get('resume_content')
+        if not resume_content:
+            raise HTTPException(status_code=400, detail="Resume content not found")
+            
+        resume_text = extract_resume_text(resume_content)
         if not resume_text:
             raise HTTPException(status_code=400, detail="Could not extract resume text")
 
         # Step 3: Generate first question via Gemini
         model = genai.GenerativeModel("gemini-2.5-flash")
-        prompt = f"""Based on the skills provided, generate 1 specific interview question:
+        prompt = f"""You are an expert interviewer. The first question should be about candidate's skills and experience be specific like university name,project name.
+        Keep it brief and make the question warm and welcoming. Make sure candiate feels comfortable.
 
 Skills/Experience:
 {resume_text}
 
 Return ONLY the question text."""
-        response = model.generate_content(prompt)
-        question_text = response.text.strip()
-
+        #response = model.generate_content(prompt)
+        #question_text = response.text.strip()
+        questions = [
+    {
+        "id": 1,
+        "text": "Hi! It’s really nice meeting you. Could you tell me about your experience working on the Distributed Sharded KV Store project and how that experience prepared you for this role?",
+        "config": {
+            "stability": 0.45,
+            "similarity_boost": 0.8,
+            "style": 0.6,
+            "use_speaker_boost": True,
+            "speaking_rate": 1.05,
+            "emotion": "warm, friendly, curious"
+        }
+    },
+    {
+        "id": 2,
+        "text": "Hey, take a deep breath — grab a sip of water if it helps. No rush at all. Once you’re ready, could you walk me through that project again, maybe focusing on what specific challenges you faced?",
+        "config": {
+            "stability": 0.3,
+            "similarity_boost": 0.9,
+            "style": 0.75,
+            "use_speaker_boost": True,
+            "speaking_rate": 0.95,
+            "emotion": "empathetic, gentle, reassuring"
+        }
+    },
+    {
+        "id": 3,
+        "text": "Great, that makes sense. Could you now tell me more about your work at Oracle — what kind of systems you worked on and your key contributions there?",
+        "config": {
+            "stability": 0.6,
+            "similarity_boost": 0.7,
+            "style": 0.4,
+            "use_speaker_boost": True,
+            "speaking_rate": 1.0,
+            "emotion": "neutral, professional, engaged"
+        }
+    },
+    {
+        "id": 4,
+        "text": "That’s an impressive background, really. Given all this experience, what made you interested in applying to our company specifically?",
+        "config": {
+            "stability": 0.5,
+            "similarity_boost": 0.8,
+            "style": 0.65,
+            "use_speaker_boost": True,
+            "speaking_rate": 1.05,
+            "emotion": "impressed, warm admiration, upbeat"
+        }
+    },
+    {
+        "id": 5,
+        "text": "I appreciate that perspective. To wrap up — where do you see yourself heading in the next few years? What kind of problems or innovations do you want to work on?",
+        "config": {
+            "stability": 0.35,
+            "similarity_boost": 0.9,
+            "style": 0.7,
+            "use_speaker_boost": True,
+            "speaking_rate": 0.98,
+            "emotion": "reflective, thoughtful, hopeful"
+        }
+    }
+]
+        session_id = f"LIVE-{len(interview_sessions) + 1:05d}"
+        question_index = 0  # First question
+        question_text = questions[question_index]['text']
+        config = questions[question_index]['config']
         # Step 4: Convert question to emotional speech (default neutral for first question)
-        audio_base64 = text_to_speech_bytes(question_text) # emotion="neutral"
+        audio_base64 = text_to_speech_bytes(question_text, config=config)
 
         # Step 5: Create interview session
-        session_id = f"LIVE-{len(interview_sessions) + 1:05d}"
+       
         interview_sessions[session_id] = {
             "application_id": request.application_id,
             "position": app_data['position'],
@@ -795,7 +952,7 @@ async def continue_live_interview(request: ContinueInterviewRequest):
         empathetic_feedback = ""
         if request.audio_blob_base64:
             audio_analysis = analyze_audio_emotions(request.audio_blob_base64)
-            empathetic_feedback = generate_empathetic_response(audio_analysis)
+            # empathetic_feedback = generate_empathetic_response(audio_analysis)
 
         # Step 2: Store candidate answer
         session['conversation'].append({
@@ -828,16 +985,82 @@ Candidate tone: {audio_analysis.get('tone', 'neutral')}
 
 Generate next question. Be encouraging if nervous, probe deeper if confident.
 Return ONLY the question."""
-        response = model.generate_content(prompt)
-        question_text = response.text.strip()
+        #response = model.generate_content(prompt)
+        #question_text = response.text.strip()
+        questions = [
+    {
+        "id": 1,
+        "text": "Hi! It's really nice meeting you. Could you tell me about your experience working on the Distributed Sharded KV Store project and how that experience prepared you for this role?",
+        "config": {
+            "stability": 0.45,
+            "similarity_boost": 0.8,
+            "style": 0.6,
+            "use_speaker_boost": True,
+            "speaking_rate": 1.05,
+            "emotion": "warm, friendly, curious"
+        }
+    },
+    {
+        "id": 2,
+        "text": "Hey, take a deep breath — grab a sip of water if it helps. No rush at all. Once you’re ready, could you walk me through that project again, maybe focusing on what specific challenges you faced?",
+        "config": {
+            "stability": 0.3,
+            "similarity_boost": 0.9,
+            "style": 0.75,
+            "use_speaker_boost": True,
+            "speaking_rate": 0.95,
+            "emotion": "empathetic, gentle, reassuring"
+        }
+    },
+    {
+        "id": 3,
+        "text": "Great, that makes sense. Could you now tell me more about your work at Oracle — what kind of systems you worked on and your key contributions there?",
+        "config": {
+            "stability": 0.6,
+            "similarity_boost": 0.7,
+            "style": 0.4,
+            "use_speaker_boost": True,
+            "speaking_rate": 1.0,
+            "emotion": "neutral, professional, engaged"
+        }
+    },
+    {
+        "id": 4,
+        "text": "That’s an impressive background, really. Given all this experience, what made you interested in applying to our company specifically?",
+        "config": {
+            "stability": 0.5,
+            "similarity_boost": 0.8,
+            "style": 0.65,
+            "use_speaker_boost": True,
+            "speaking_rate": 1.05,
+            "emotion": "impressed, warm admiration, upbeat"
+        }
+    },
+    {
+        "id": 5,
+        "text": "I appreciate that perspective. To wrap up — where do you see yourself heading in the next few years? What kind of problems or innovations do you want to work on?",
+        "config": {
+            "stability": 0.35,
+            "similarity_boost": 0.9,
+            "style": 0.7,
+            "use_speaker_boost": True,
+            "speaking_rate": 0.98,
+            "emotion": "reflective, thoughtful, hopeful"
+        }
+    }
+]
+        question_index = session['question_count']  # question_count is already 1, so this gets index 1 (second question)
+        question_text = questions[question_index]['text']
+        config = questions[question_index]['config']
+
         print("Generating prompt through gemini end")
 
         # Step 5: Combine empathetic feedback + question
         full_response = f"{empathetic_feedback} {question_text}" if empathetic_feedback else question_text
 
-        # Step 6: Convert to emotional speech using ElevenLabs
+        # Step 6: Convert to emotional speech using ElevenLabs with config
         detected_tone = audio_analysis.get('tone', 'neutral')
-        audio_base64 = text_to_speech_bytes(full_response, audio_data=audio_analysis)
+        audio_base64 = text_to_speech_bytes(full_response, config=config)
 
         # Step 7: Update session
         session['conversation'].append({

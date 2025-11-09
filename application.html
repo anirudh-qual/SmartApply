@@ -236,17 +236,17 @@
                         <p class="transcript-label">Your Answer (Real-time):</p>
                         <p class="transcript-text" id="transcriptText"></p>
                     </div>
-                    <div class="controls">
+                    <!-- <div class="controls">
                         <button class="btn-record" id="stopInterviewBtn" onclick="stopLiveInterview()">⏹️ Stop Interview</button>
-                    </div>
+                    </div> -->
                     <div id="liveLoader" class="loader hidden"></div>
                 </div>
 
-                <div id="liveResultsSection" class="hidden">
+                <!-- <div id="liveResultsSection" class="hidden">
                     <h2>📊 PRE-SCREEN Results</h2>
                     <div id="liveEvaluationDisplay"></div>
                     <button type="button" class="btn-secondary" onclick="resetLiveInterview()">Take Another Interview</button>
-                </div>
+                </div> -->
             </div>
         </div>
     </div>
@@ -863,12 +863,12 @@
                             `Question ${data.question_number} of ${data.total_questions}`;
                         
                         // Show emotion feedback if available
-                        if (data.tone_detected) {
-                            const emotionDiv = document.getElementById('emotionFeedback');
-                            emotionDiv.innerHTML = `<p style="color: #667eea; font-weight: 600;">
-                                Detected tone: ${data.tone_detected}${data.empathetic_feedback ? ' - ' + data.empathetic_feedback : ''}
-                            </p>`;
-                        }
+                        // if (data.tone_detected) {
+                        //     const emotionDiv = document.getElementById('emotionFeedback');
+                        //     emotionDiv.innerHTML = `<p style="color: #667eea; font-weight: 600;">
+                        //         Detected tone: ${data.tone_detected}${data.empathetic_feedback ? ' - ' + data.empathetic_feedback : ''}
+                        //     </p>`;
+                        // }
                         
                         // Play next question audio
                         if (data.audio) {
@@ -903,41 +903,52 @@
         }
 
         function displayEvaluationResults(evaluation) {
-            document.getElementById('liveInterviewSection').classList.add('hidden');
-            document.getElementById('liveResultsSection').classList.remove('hidden');
+            try { if (recognition) { recognition.stop(); } } catch(_) {}
+            isListening = false;
+            if (videoStream) { videoStream.getTracks().forEach(t => t.stop()); }
+            const start = document.getElementById('startSection');
+            const live  = document.getElementById('liveInterviewSection');
+            if (live) live.classList.add('hidden');
+            if (start) start.style.display = 'block';
+
+            // Optional toast/message
+            alert('Thanks! Your pre-screen interview is complete. Our team will review your results and get back to you.');
+
+            // document.getElementById('liveInterviewSection').classList.add('hidden');
+            // document.getElementById('liveResultsSection').classList.remove('hidden');
             
-            const evaluationDiv = document.getElementById('liveEvaluationDisplay');
-            evaluationDiv.innerHTML = `
-                <div class="evaluation-result">
-                    <div class="score-display">${evaluation.overall_score}/100</div>
-                    <div class="evaluation-section">
-                        <h3>Strengths</h3>
-                        <ul>
-                            ${evaluation.strengths.map(s => `<li>${s}</li>`).join('')}
-                        </ul>
-                    </div>
-                    <div class="evaluation-section">
-                        <h3>Areas for Improvement</h3>
-                        <ul>
-                            ${evaluation.areas_for_improvement.map(a => `<li>${a}</li>`).join('')}
-                        </ul>
-                    </div>
-                    <div class="evaluation-section">
-                        <h3>Recommendation</h3>
-                        <p>${evaluation.recommendation}</p>
-                    </div>
-                    <div class="evaluation-section">
-                        <h3>Summary</h3>
-                        <p>${evaluation.summary}</p>
-                    </div>
-                </div>
-            `;
+            // const evaluationDiv = document.getElementById('liveEvaluationDisplay');
+            // evaluationDiv.innerHTML = `
+            //     <div class="evaluation-result">
+            //         <div class="score-display">${evaluation.overall_score}/100</div>
+            //         <div class="evaluation-section">
+            //             <h3>Strengths</h3>
+            //             <ul>
+            //                 ${evaluation.strengths.map(s => `<li>${s}</li>`).join('')}
+            //             </ul>
+            //         </div>
+            //         <div class="evaluation-section">
+            //             <h3>Areas for Improvement</h3>
+            //             <ul>
+            //                 ${evaluation.areas_for_improvement.map(a => `<li>${a}</li>`).join('')}
+            //             </ul>
+            //         </div>
+            //         <div class="evaluation-section">
+            //             <h3>Recommendation</h3>
+            //             <p>${evaluation.recommendation}</p>
+            //         </div>
+            //         <div class="evaluation-section">
+            //             <h3>Summary</h3>
+            //             <p>${evaluation.summary}</p>
+            //         </div>
+            //     </div>
+            // `;
             
-            // Stop listening
-            if (recognition) {
-                recognition.stop();
-                isListening = false;
-            }
+            // // Stop listening
+            // if (recognition) {
+            //     recognition.stop();
+            //     isListening = false;
+            // }
         }
 
         function updateStatus(text, showWave) {
