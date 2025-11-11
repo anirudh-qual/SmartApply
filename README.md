@@ -1,5 +1,4 @@
-# Job Application Backend API
-
+# SMART APPLY 
 FastAPI backend for job applications with text-to-speech functionality.
 
 ## Features
